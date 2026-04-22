@@ -67,29 +67,53 @@ bool FileSystem::initialize() {
 }
 
 int FileSystem::parsePath(const std::string& path, std::string& parentPath, std::string& fileName) {
-    if (path.empty() || path[0] != '/') {
+    std::string absolutePath = path;
+    
+    if (path.empty()) {
         return -1;
     }
     
-    size_t lastSlash = path.find_last_of('/');
+    if (path[0] != '/') {
+        if (currentDirPath_ == "/") {
+            absolutePath = "/" + path;
+        } else {
+            absolutePath = currentDirPath_ + "/" + path;
+        }
+    }
+    
+    size_t lastSlash = absolutePath.find_last_of('/');
     if (lastSlash == 0) {
         parentPath = "/";
-        fileName = path.substr(1);
+        fileName = absolutePath.substr(1);
     } else {
-        parentPath = path.substr(0, lastSlash);
-        fileName = path.substr(lastSlash + 1);
+        parentPath = absolutePath.substr(0, lastSlash);
+        fileName = absolutePath.substr(lastSlash + 1);
     }
     
     return 0;
 }
 
 int FileSystem::findInodeByPath(const std::string& path) {
-    if (path == "/" || path.empty()) {
+    std::string absolutePath = path;
+    
+    if (path.empty()) {
+        return currentDirInode_;
+    }
+    
+    if (path[0] != '/') {
+        if (currentDirPath_ == "/") {
+            absolutePath = "/" + path;
+        } else {
+            absolutePath = currentDirPath_ + "/" + path;
+        }
+    }
+    
+    if (absolutePath == "/" || absolutePath.empty()) {
         return 0;
     }
     
     std::vector<std::string> parts;
-    std::stringstream ss(path.substr(1));
+    std::stringstream ss(absolutePath.substr(1));
     std::string part;
     while (std::getline(ss, part, '/')) {
         if (!part.empty()) {
