@@ -4,6 +4,7 @@
 
 const int BLOCK_SIZE = 1024;
 const int TOTAL_BLOCKS = 16384;
+const int TOTAL_SIZE = TOTAL_BLOCKS * BLOCK_SIZE;
 const int TOTAL_INODES = 1000;
 const int INODE_SIZE = 64;
 const int INODES_PER_BLOCK = BLOCK_SIZE / INODE_SIZE;
