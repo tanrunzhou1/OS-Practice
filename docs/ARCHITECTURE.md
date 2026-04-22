@@ -57,6 +57,10 @@ UnixFileSystem/
 │   ├── Directory.cpp
 │   ├── FileSystem.cpp
 │   └── CommandHandler.cpp
+├── test/                    # 测试目录
+│   ├── test_blockdevice.cpp # BlockDevice单元测试
+│   ├── test_bitmap.cpp      # Bitmap单元测试
+│   └── ...
 ├── data/                    # 数据文件目录（运行时生成）
 │   └── fs.dat               # 文件系统镜像
 ├── docs/                    # 文档目录
