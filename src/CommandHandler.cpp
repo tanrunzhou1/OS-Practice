@@ -132,7 +132,7 @@ void CommandHandler::handleSave(const std::vector<std::string>& args) {
         std::cerr << "Usage: save <filename>" << std::endl;
         return;
     }
-    fileSystem_->save(args[0]);
+    fileSystem_->save("data/" + args[0]);
 }
 
 void CommandHandler::handleLoad(const std::vector<std::string>& args) {
@@ -140,7 +140,7 @@ void CommandHandler::handleLoad(const std::vector<std::string>& args) {
         std::cerr << "Usage: load <filename>" << std::endl;
         return;
     }
-    fileSystem_->load(args[0]);
+    fileSystem_->load("data/" + args[0]);
 }
 
 void CommandHandler::run() {

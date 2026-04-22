@@ -7,6 +7,7 @@
 #include <ctime>
 #include <cstdlib>
 #include <fstream>
+#include <sys/stat.h>
 
 FileSystem::FileSystem() : storage_(nullptr), blockBitmap_(nullptr), 
                            inodeBitmap_(nullptr), inodeManager_(nullptr),
@@ -510,6 +511,20 @@ std::string FileSystem::getSpaceInfo() {
 }
 
 bool FileSystem::save(const std::string& filename) {
+    std::string path = filename;
+    size_t lastSlash = path.find_last_of("/\\");
+    if (lastSlash != std::string::npos) {
+        std::string dir = path.substr(0, lastSlash);
+        struct stat st;
+        if (stat(dir.c_str(), &st) != 0) {
+            #ifdef _WIN32
+            system(("mkdir " + dir).c_str());
+            #else
+            system(("mkdir -p " + dir).c_str());
+            #endif
+        }
+    }
+    
     std::ofstream out(filename, std::ios::binary);
     if (!out) {
         std::cerr << "Error: Cannot open file for writing" << std::endl;
