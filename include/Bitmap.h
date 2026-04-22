@@ -15,6 +15,7 @@ public:
     ~Bitmap();
 
     int allocate();
+    int allocate(int index);
     void release(int index);
     bool isAllocated(int index) const;
     int getSize() const { return size_; }

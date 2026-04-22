@@ -20,6 +20,20 @@ int Bitmap::allocate() {
     return -1;
 }
 
+int Bitmap::allocate(int index) {
+    if (index < 0 || index >= max_size_) {
+        std::cerr << "Error: Index out of range: " << index << std::endl;
+        return -1;
+    }
+    if (bitmap_[index] == 1) {
+        std::cerr << "Error: Index already allocated: " << index << std::endl;
+        return -1;
+    }
+    bitmap_[index] = 1;
+    size_++;
+    return index;
+}
+
 void Bitmap::release(int index) {
     if (index < 0 || index >= max_size_) {
         std::cerr << "Error: Index out of range: " << index << std::endl;
