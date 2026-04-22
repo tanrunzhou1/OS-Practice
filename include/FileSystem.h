@@ -6,15 +6,7 @@
 #include "SuperBlock.h"
 #include "Bitmap.h"
 #include "Inode.h"
-
-struct DirEntry {
-    uint32_t inode_num;
-    char name[28];
-
-    DirEntry() : inode_num(0) {
-        name[0] = '\0';
-    }
-};
+#include "Directory.h"
 
 class FileSystem {
 private:
@@ -23,15 +15,13 @@ private:
     Bitmap* blockBitmap_;
     Bitmap* inodeBitmap_;
     InodeManager* inodeManager_;
+    Directory* directory_;
     int currentDirInode_;
 
     bool initialize();
 
     int parsePath(const std::string& path, std::string& parentPath, std::string& fileName);
     int findInodeByPath(const std::string& path);
-    int createDirectoryEntry(int parentInode, const std::string& name, int inodeNum);
-    int findDirectoryEntry(int dirInode, const std::string& name);
-    bool removeDirectoryEntry(int dirInode, const std::string& name);
 
     std::string generateRandomContent(int sizeKB);
     std::string getCurrentTimeString();
@@ -49,6 +39,7 @@ public:
     bool deleteDir(const std::string& path);
     bool changeDir(const std::string& path);
     std::vector<DirEntry> listDir();
+    void dir();
 
     std::string getSpaceInfo();
 

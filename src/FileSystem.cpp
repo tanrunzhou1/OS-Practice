@@ -9,19 +9,21 @@
 #include <fstream>
 
 FileSystem::FileSystem() : storage_(nullptr), blockBitmap_(nullptr), 
-                           inodeBitmap_(nullptr), inodeManager_(nullptr), 
-                           currentDirInode_(0) {
+                           inodeBitmap_(nullptr), inodeManager_(nullptr),
+                           directory_(nullptr), currentDirInode_(0) {
     storage_ = new char[TOTAL_SIZE];
     std::memset(storage_, 0, TOTAL_SIZE);
     
     blockBitmap_ = new Bitmap(TOTAL_BLOCKS);
     inodeBitmap_ = new Bitmap(TOTAL_INODES);
     inodeManager_ = new InodeManager(storage_, TOTAL_INODES);
+    directory_ = new Directory(storage_, BLOCK_SIZE);
     
     initialize();
 }
 
 FileSystem::~FileSystem() {
+    if (directory_) delete directory_;
     if (storage_) delete[] storage_;
     if (blockBitmap_) delete blockBitmap_;
     if (inodeBitmap_) delete inodeBitmap_;
@@ -41,8 +43,25 @@ bool FileSystem::initialize() {
     
     Inode rootInode;
     rootInode.init(S_IFDIR | S_IRUSR | S_IWUSR | S_IXUSR);
+    rootInode.i_block[0] = FIRST_DATA_BLOCK + std::rand() % (TOTAL_BLOCKS - FIRST_DATA_BLOCK);
+    rootInode.i_blocks = 1;
     inodeManager_->writeInode(0, rootInode);
     inodeBitmap_->allocate();
+    
+    blockBitmap_->allocate(rootInode.i_block[0]);
+    superBlock_.s_free_blocks_count--;
+    
+    char blockBuffer[BLOCK_SIZE];
+    std::memset(blockBuffer, 0, BLOCK_SIZE);
+    DirEntry* entries = reinterpret_cast<DirEntry*>(blockBuffer);
+    entries[0].inode_num = 0;
+    std::strncpy(entries[0].name, ".", 27);
+    entries[1].inode_num = 0;
+    std::strncpy(entries[1].name, "..", 27);
+    std::memcpy(storage_ + rootInode.i_block[0] * BLOCK_SIZE, blockBuffer, BLOCK_SIZE);
+    
+    rootInode.i_size = 2 * sizeof(DirEntry);
+    inodeManager_->writeInode(0, rootInode);
     
     return true;
 }
@@ -81,7 +100,7 @@ int FileSystem::findInodeByPath(const std::string& path) {
     int currentInode = 0;
     
     for (size_t i = 0; i < parts.size(); i++) {
-        int foundInode = findDirectoryEntry(currentInode, parts[i]);
+        int foundInode = directory_->findEntry(currentInode, parts[i]);
         if (foundInode < 0) {
             return -1;
         }
@@ -101,117 +120,6 @@ int FileSystem::findInodeByPath(const std::string& path) {
     }
     
     return currentInode;
-}
-
-int FileSystem::findDirectoryEntry(int dirInode, const std::string& name) {
-    Inode dirInodeStruct;
-    inodeManager_->readInode(dirInode, dirInodeStruct);
-    
-    if (!dirInodeStruct.isDirectory()) {
-        return -1;
-    }
-    
-    int entriesPerBlock = BLOCK_SIZE / sizeof(DirEntry);
-    
-    for (int i = 0; i < MAX_DIRECT_BLOCKS; i++) {
-        if (dirInodeStruct.i_block[i] == 0) continue;
-        
-        char blockBuffer[BLOCK_SIZE];
-        std::memcpy(blockBuffer, storage_ + dirInodeStruct.i_block[i] * BLOCK_SIZE, BLOCK_SIZE);
-        
-        DirEntry* entries = reinterpret_cast<DirEntry*>(blockBuffer);
-        for (int j = 0; j < entriesPerBlock; j++) {
-            if (entries[j].inode_num != 0 && 
-                std::string(entries[j].name) == name) {
-                return entries[j].inode_num;
-            }
-        }
-    }
-    
-    return -1;
-}
-
-int FileSystem::createDirectoryEntry(int parentInode, const std::string& name, int inodeNum) {
-    Inode parentInodeStruct;
-    inodeManager_->readInode(parentInode, parentInodeStruct);
-    
-    DirEntry newEntry;
-    newEntry.inode_num = inodeNum;
-    std::strncpy(newEntry.name, name.c_str(), 27);
-    newEntry.name[27] = '\0';
-    
-    int entriesPerBlock = BLOCK_SIZE / sizeof(DirEntry);
-    
-    for (int i = 0; i < MAX_DIRECT_BLOCKS; i++) {
-        if (parentInodeStruct.i_block[i] == 0) {
-            parentInodeStruct.i_block[i] = FIRST_DATA_BLOCK + std::rand() % (TOTAL_BLOCKS - FIRST_DATA_BLOCK);
-            blockBitmap_->allocate(parentInodeStruct.i_block[i]);
-            superBlock_.s_free_blocks_count--;
-            
-            char blockBuffer[BLOCK_SIZE];
-            std::memset(blockBuffer, 0, BLOCK_SIZE);
-            std::memcpy(blockBuffer, &newEntry, sizeof(DirEntry));
-            std::memcpy(storage_ + parentInodeStruct.i_block[i] * BLOCK_SIZE, blockBuffer, BLOCK_SIZE);
-            
-            parentInodeStruct.i_blocks++;
-            parentInodeStruct.i_size += sizeof(DirEntry);
-            parentInodeStruct.i_mtime = static_cast<uint32_t>(time(nullptr));
-            inodeManager_->writeInode(parentInode, parentInodeStruct);
-            
-            return 0;
-        }
-        
-        char blockBuffer[BLOCK_SIZE];
-        std::memcpy(blockBuffer, storage_ + parentInodeStruct.i_block[i] * BLOCK_SIZE, BLOCK_SIZE);
-        
-        DirEntry* entries = reinterpret_cast<DirEntry*>(blockBuffer);
-        for (int j = 0; j < entriesPerBlock; j++) {
-            if (entries[j].inode_num == 0) {
-                entries[j] = newEntry;
-                std::memcpy(storage_ + parentInodeStruct.i_block[i] * BLOCK_SIZE, blockBuffer, BLOCK_SIZE);
-                
-                parentInodeStruct.i_size += sizeof(DirEntry);
-                parentInodeStruct.i_mtime = static_cast<uint32_t>(time(nullptr));
-                inodeManager_->writeInode(parentInode, parentInodeStruct);
-                
-                return 0;
-            }
-        }
-    }
-    
-    return -1;
-}
-
-bool FileSystem::removeDirectoryEntry(int dirInode, const std::string& name) {
-    Inode dirInodeStruct;
-    inodeManager_->readInode(dirInode, dirInodeStruct);
-    
-    int entriesPerBlock = BLOCK_SIZE / sizeof(DirEntry);
-    
-    for (int i = 0; i < MAX_DIRECT_BLOCKS; i++) {
-        if (dirInodeStruct.i_block[i] == 0) continue;
-        
-        char blockBuffer[BLOCK_SIZE];
-        std::memcpy(blockBuffer, storage_ + dirInodeStruct.i_block[i] * BLOCK_SIZE, BLOCK_SIZE);
-        
-        DirEntry* entries = reinterpret_cast<DirEntry*>(blockBuffer);
-        for (int j = 0; j < entriesPerBlock; j++) {
-            if (entries[j].inode_num != 0 && 
-                std::string(entries[j].name) == name) {
-                entries[j].inode_num = 0;
-                entries[j].name[0] = '\0';
-                std::memcpy(storage_ + dirInodeStruct.i_block[i] * BLOCK_SIZE, blockBuffer, BLOCK_SIZE);
-                
-                dirInodeStruct.i_size -= sizeof(DirEntry);
-                dirInodeStruct.i_mtime = static_cast<uint32_t>(time(nullptr));
-                inodeManager_->writeInode(dirInode, dirInodeStruct);
-                
-                return true;
-            }
-        }
-    }
-    
-    return false;
 }
 
 std::string FileSystem::generateRandomContent(int sizeKB) {
@@ -289,7 +197,7 @@ bool FileSystem::createFile(const std::string& path, int sizeKB) {
         }
     }
     
-    createDirectoryEntry(parentInode, fileName, inodeNum);
+    directory_->addEntry(parentInode, fileName, inodeNum);
     
     std::cout << "File created: " << path << " (" << sizeKB << " KB)" << std::endl;
     return true;
@@ -315,7 +223,7 @@ bool FileSystem::deleteFile(const std::string& path) {
     int parentInode = findInodeByPath(parentPath.empty() ? "/" : parentPath);
     
     if (parentInode >= 0) {
-        removeDirectoryEntry(parentInode, fileName);
+        directory_->removeEntry(parentInode, fileName);
     }
     
     inodeManager_->freeInode(inodeNum);
@@ -406,7 +314,28 @@ bool FileSystem::createDir(const std::string& path) {
     inodeBitmap_->allocate(inodeNum);
     superBlock_.s_free_inodes_count--;
     
-    createDirectoryEntry(parentInode, dirName, inodeNum);
+    Inode newDirInode;
+    newDirInode.init(S_IFDIR | S_IRUSR | S_IWUSR | S_IXUSR);
+    newDirInode.i_block[0] = FIRST_DATA_BLOCK + std::rand() % (TOTAL_BLOCKS - FIRST_DATA_BLOCK);
+    newDirInode.i_blocks = 1;
+    newDirInode.i_size = 0;
+    
+    blockBitmap_->allocate(newDirInode.i_block[0]);
+    superBlock_.s_free_blocks_count--;
+    
+    char blockBuffer[BLOCK_SIZE];
+    std::memset(blockBuffer, 0, BLOCK_SIZE);
+    DirEntry* entries = reinterpret_cast<DirEntry*>(blockBuffer);
+    entries[0].inode_num = inodeNum;
+    std::strncpy(entries[0].name, ".", 27);
+    entries[1].inode_num = parentInode;
+    std::strncpy(entries[1].name, "..", 27);
+    std::memcpy(storage_ + newDirInode.i_block[0] * BLOCK_SIZE, blockBuffer, BLOCK_SIZE);
+    
+    newDirInode.i_size = 2 * sizeof(DirEntry);
+    inodeManager_->writeInode(inodeNum, newDirInode);
+    
+    directory_->addEntry(parentInode, dirName, inodeNum);
     
     std::cout << "Directory created: " << path << std::endl;
     return true;
@@ -447,7 +376,7 @@ bool FileSystem::deleteDir(const std::string& path) {
     int parentInode = findInodeByPath(parentPath.empty() ? "/" : parentPath);
     
     if (parentInode >= 0) {
-        removeDirectoryEntry(parentInode, dirName);
+        directory_->removeEntry(parentInode, dirName);
     }
     
     inodeManager_->freeInode(dirInode);
@@ -479,32 +408,55 @@ bool FileSystem::changeDir(const std::string& path) {
 }
 
 std::vector<DirEntry> FileSystem::listDir() {
-    std::vector<DirEntry> entries;
+    return directory_->listEntries(currentDirInode_);
+}
+
+void FileSystem::dir() {
+    std::vector<DirEntry> entries = directory_->listEntries(currentDirInode_);
     
-    Inode currentInodeStruct;
-    inodeManager_->readInode(currentDirInode_, currentInodeStruct);
-    
-    if (!currentInodeStruct.isDirectory()) {
-        return entries;
-    }
-    
-    int entriesPerBlock = BLOCK_SIZE / sizeof(DirEntry);
-    
-    for (int i = 0; i < MAX_DIRECT_BLOCKS; i++) {
-        if (currentInodeStruct.i_block[i] == 0) continue;
-        
-        char blockBuffer[BLOCK_SIZE];
-        std::memcpy(blockBuffer, storage_ + currentInodeStruct.i_block[i] * BLOCK_SIZE, BLOCK_SIZE);
-        
-        DirEntry* blockEntries = reinterpret_cast<DirEntry*>(blockBuffer);
-        for (int j = 0; j < entriesPerBlock; j++) {
-            if (blockEntries[j].inode_num != 0) {
-                entries.push_back(blockEntries[j]);
-            }
+    int visibleCount = 0;
+    for (const auto& entry : entries) {
+        if (std::string(entry.name) != "." && std::string(entry.name) != "..") {
+            visibleCount++;
         }
     }
     
-    return entries;
+    if (visibleCount == 0) {
+        std::cout << "  (empty directory)" << std::endl;
+        return;
+    }
+    
+    std::cout << std::left << std::setw(10) << "Type" 
+              << std::setw(12) << "Size" 
+              << std::setw(20) << "Modified Time" 
+              << "Name" << std::endl;
+    std::cout << std::string(60, '-') << std::endl;
+    
+    for (const auto& entry : entries) {
+        if (std::string(entry.name) == "." || std::string(entry.name) == "..") {
+            continue;
+        }
+        
+        Inode inode;
+        inodeManager_->readInode(entry.inode_num, inode);
+        
+        std::string type = inode.isDirectory() ? "<DIR>" : "<FILE>";
+        
+        std::string size = inode.isDirectory() ? "-" : std::to_string(inode.i_size) + " B";
+        
+        time_t mtime = inode.i_mtime;
+        struct tm* timeinfo = localtime(&mtime);
+        char timeBuffer[32];
+        std::strftime(timeBuffer, sizeof(timeBuffer), "%Y-%m-%d %H:%M:%S", timeinfo);
+        
+        std::cout << std::left << std::setw(10) << type 
+                  << std::setw(12) << size 
+                  << std::setw(20) << timeBuffer 
+                  << entry.name << std::endl;
+    }
+    
+    std::cout << std::string(60, '-') << std::endl;
+    std::cout << "  Total: " << visibleCount << " items" << std::endl;
 }
 
 std::string FileSystem::getSpaceInfo() {
