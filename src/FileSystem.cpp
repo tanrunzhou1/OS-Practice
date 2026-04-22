@@ -390,7 +390,7 @@ bool FileSystem::deleteDir(const std::string& path) {
         return false;
     }
     
-    if (dirInodeStruct.i_size > 0) {
+    if (dirInodeStruct.i_size > 2 * sizeof(DirEntry)) {
         std::cerr << "Error: Directory is not empty" << std::endl;
         return false;
     }
