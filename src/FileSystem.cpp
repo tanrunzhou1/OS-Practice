@@ -10,7 +10,7 @@
 
 FileSystem::FileSystem() : storage_(nullptr), blockBitmap_(nullptr), 
                            inodeBitmap_(nullptr), inodeManager_(nullptr),
-                           directory_(nullptr), currentDirInode_(0) {
+                           directory_(nullptr), currentDirInode_(0), currentDirPath_("/") {
     storage_ = new char[TOTAL_SIZE];
     std::memset(storage_, 0, TOTAL_SIZE);
     
@@ -403,7 +403,20 @@ bool FileSystem::changeDir(const std::string& path) {
     }
     
     currentDirInode_ = targetInode;
-    std::cout << "Changed directory to: " << path << std::endl;
+    
+    if (path == "/") {
+        currentDirPath_ = "/";
+    } else if (path[0] == '/') {
+        currentDirPath_ = path;
+    } else {
+        if (currentDirPath_ == "/") {
+            currentDirPath_ = "/" + path;
+        } else {
+            currentDirPath_ = currentDirPath_ + "/" + path;
+        }
+    }
+    
+    std::cout << "Changed directory to: " << currentDirPath_ << std::endl;
     return true;
 }
 
@@ -509,9 +522,5 @@ void FileSystem::printWelcome() {
 }
 
 std::string FileSystem::getCurrentDir() {
-    if (currentDirInode_ == 0) {
-        return "/";
-    }
-    
-    return "/";
+    return currentDirPath_;
 }

@@ -17,6 +17,7 @@ private:
     InodeManager* inodeManager_;
     Directory* directory_;
     int currentDirInode_;
+    std::string currentDirPath_;
 
     bool initialize();
 
