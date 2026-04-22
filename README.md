@@ -27,7 +27,7 @@
 
 ```bash
 # 进入项目目录
-cd d:\scut\Grade3\OS Practice
+cd \OS Practice
 
 # 创建 data 目录（如果不存在）
 mkdir data
